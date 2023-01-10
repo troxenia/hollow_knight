@@ -11,7 +11,6 @@ FPS = 50
 tile_width = tile_height = 50
 tile_images = {'empty': 'empty.jpg'}
 
-buttons = pygame.sprite.Group()
 tiles = pygame.sprite.Group()
 hero_group = pygame.sprite.Group()
 obstacles = pygame.sprite.Group()
@@ -34,41 +33,6 @@ def load_image(name, color_key=None):
     return image
 
 
-def terminate():
-    pygame.quit()
-    sys.exit()
-
-
-def start_screen():
-    intro_text = ['Game Name', '', '', 'Something else']
-
-    background = pygame.transform.scale(load_image('background.jpg'), (WIDTH, HEIGHT))
-    screen.blit(background, (0, 0))
-    font = pygame.font.Font(None, 30)
-    text_coord = 50
-    for line in intro_text:
-        string_rendered = font.render(line, True, pygame.Color('white'))
-        intro_rect = string_rendered.get_rect()
-        text_coord += 10
-        intro_rect.top = text_coord
-        intro_rect.x = 10
-        text_coord += intro_rect.height
-        screen.blit(string_rendered, intro_rect)
-
-    while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                terminate()
-            elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
-                return
-        pygame.display.flip()
-        clock.tick(FPS)
-
-
-def end_game():  # end level
-    terminate()  # заглушка
-
-
 def load_level(filename):
     filename = 'data/' + filename
     with open(filename, 'r') as mapFile:
@@ -78,39 +42,63 @@ def load_level(filename):
 
 
 def generate_level(level):
-    new_player, x, y = None, None, None
+    hero, x, y = None, None, None
     for y in range(len(level)):
         for x in range(len(level[y])):
             if level[y][x] == '.':
                 Tile(x, y, tile_images['empty'])
             elif level[y][x] == '@':
                 Tile(x, y, tile_images['empty'])
-                new_player = Knight(x, y)
+                hero = Knight(x, y)
                 level[y][x] = '.'
-    return new_player, x, y
+            elif level[y][x] == '#':
+                Tile(x, y, tile_images['empty'])
+                CrystalEnemy(x, y)
+                level[y][x] = '.'
+    return hero, x, y
 
 
-class Sprite(pygame.sprite.Sprite):  # static sprites
-
-    def __init__(self, group, x, y, filename):
-        super().__init__(group)
-        self.image = load_image(filename)
-        self.rect = self.image.get_rect().move(tile_width * x, tile_height * y)
+def close():
+    pygame.quit()
+    sys.exit()
 
 
-class Button(Sprite):  # class for buttons on operational screens: opening, closing, levels, etc.
+def display_text(text: list, text_coord: int, font=pygame.font.Font(None, 30), color=pygame.Color('white')):
+    for line in text:
+        string_rendered = font.render(line, True, color)
+        text_rect = string_rendered.get_rect()
+        text_coord += 10
+        text_rect.top = text_coord
+        text_rect.x = 10
+        text_coord += text_rect.height
+        screen.blit(string_rendered, text_rect)
 
-    def __init__(self, x, y):
-        super().__init__(buttons, x, y, 'button.png')
+
+class Button:  # class for buttons on operational screens: opening, closing, levels, etc.
+
+    def __init__(self, x, y, width, height, action, color=(248, 222, 173)):
+        self.x, self.y, self.width, self.height = x, y, width, height
+        self.color = color
+        self.action = action
+
+    def draw(self):
+        pygame.draw.rect(screen, self.color, (self.x, self.y, self.width, self.height), border_radius=5)
+        font = pygame.font.Font(None, 30)
+        string_rendered = font.render(self.action, True, (0, 0, 0))
+        string_rect = (self.x, self.y + 5)
+        screen.blit(string_rendered, string_rect)
 
     def update(self, event):  # update when clicked
-        pass
+        if self.x <= event.pos[0] <= self.x + self.width and self.y <= event.pos[1] <= self.y + self.height:
+            return self.action
 
 
-class Tile(Sprite):
+class Tile(pygame.sprite.Sprite):
 
     def __init__(self, x, y, filename):
-        super().__init__(tiles, x, y, filename)
+        super().__init__(tiles)
+        self.image = load_image(filename)
+        self.rect = self.image.get_rect().move(tile_width * x, tile_height * y)
 
 
 class AnimatedSprite(pygame.sprite.Sprite):
@@ -178,6 +166,7 @@ class Knight(AnimatedSprite):
 
 class CrystalEnemy(AnimatedSprite):
     """Враг кристальный жук."""
+
     def __init__(self, x, y, turn='right'):
         super().__init__(enemies, x, y,
                          {'right': (load_image('going_right.png'), 5, 1), 'left': (load_image('going_left.png'), 5, 1)})
@@ -203,21 +192,86 @@ class CrystalEnemy(AnimatedSprite):
         super().switch_frames(self.turn)
 
 
-start_screen()
-level_map = load_level('map.txt')
-hero, max_x, max_y = generate_level(level_map)
-enemy1 = CrystalEnemy(1, 1)
-running = True
-while running:
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-    keys = pygame.key.get_pressed()
-    hero.update()
-    tiles.draw(screen)
-    enemies.update()
-    enemies.draw(screen)
-    hero_group.draw(screen)
-    clock.tick(FPS)
-    pygame.display.flip()
+class Menu:  # start, between levels (fail & success), end(?), rules, levels, etc.
+
+    def __init__(self, background, widgets: list):
+        self.widgets = widgets
+        self.background = pygame.transform.scale(load_image(background), (WIDTH, HEIGHT))
+
+    def run(self):
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    close()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    for widget in self.widgets:
+                        action = widget.update(event)
+                        if action is not None:
+                            return action
+            for widget in self.widgets:
+                widget.draw()
+            pygame.display.flip()
+            clock.tick(FPS)
+
+
+class Start(Menu):
+
+    def __init__(self, background, widgets: list):
+        super().__init__(background, widgets)
+        self.actions = ['start', 'help', 'levels']
+
+    def run(self):
+        screen.blit(self.background, (0, 0))
+        intro_text = ['Game Name', '', '', 'Something else']
+        font = pygame.font.Font(None, 30)  # change to aesthetically pleasing font + figure out size
+        text_coord = 50  # figure out best text placement
+        display_text(intro_text, text_coord, font)
+        return super().run()
+
+
+class Help(Menu):
+
+    def __init__(self, background, widgets: list):
+        super().__init__(background, widgets)
+        self.actions = ['back']
+
+    def run(self):
+        screen.blit(self.background, (0, 0))
+        help_text = ['Help', '', '', 'How to play']
+        font = pygame.font.Font(None, 30)  # change to aesthetically pleasing font + figure out size
+        text_coord = 50  # figure out best text placement
+        display_text(help_text, text_coord, font)
+        return super().run()
+
+
+def game(level_map):
+    global keys  # I really don't like this...
+    level_map = load_level(level_map)
+    hero, max_x, max_y = generate_level(level_map)
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+        keys = pygame.key.get_pressed()
+        hero.update()
+        tiles.draw(screen)
+        enemies.update()
+        enemies.draw(screen)
+        hero_group.draw(screen)
+        clock.tick(FPS)
+        pygame.display.flip()
+
+
+start_buttons = [Button(10, 300, 50, 30, 'start'), Button(80, 300, 50, 30, 'help'), Button(150, 300, 60, 30, 'levels')]
+help_buttons = [Button(10, 10, 50, 30, 'back')]
+
+screens = [Start('background.jpg', start_buttons), Help('background.jpg', help_buttons)]
+cur_screen = screens[0]
+action = cur_screen.run()
+if action == 'start':
+    keys = ()
+    game('map.txt')
+elif action == 'help':
+    pass
 pygame.quit()
