@@ -14,10 +14,9 @@ tile_images = {'empty': 'empty.jpg'}
 buttons = pygame.sprite.Group()
 tiles = pygame.sprite.Group()
 hero_group = pygame.sprite.Group()
-enemies = pygame.sprite.Group()
 obstacles = pygame.sprite.Group()
 coins = pygame.sprite.Group()
-animated_enemies = pygame.sprite.Group()
+enemies = pygame.sprite.Group()
 
 
 def load_image(name, color_key=None):
@@ -91,21 +90,21 @@ def generate_level(level):
     return new_player, x, y
 
 
-class Sprite(pygame.sprite.Sprite):
+class Sprite(pygame.sprite.Sprite):  # static sprites
 
     def __init__(self, group, x, y, filename):
         super().__init__(group)
         self.image = load_image(filename)
         self.rect = self.image.get_rect().move(tile_width * x, tile_height * y)
 
-    def update(self, event):  # move
-        pass
-
 
 class Button(Sprite):  # class for buttons on operational screens: opening, closing, levels, etc.
 
     def __init__(self, x, y):
         super().__init__(buttons, x, y, 'button.png')
+
+    def update(self, event):  # update when clicked
+        pass
 
 
 class Tile(Sprite):
@@ -134,11 +133,11 @@ class AnimatedSprite(pygame.sprite.Sprite):
         for j in range(rows):
             for i in range(columns):
                 frame_location = (self.rect.w * i, self.rect.h * j)
-                for _ in range(3):
+                for _ in range(3):  # slow down frames
                     self.frames.append(sheet.subsurface(pygame.Rect(
                         frame_location, self.rect.size)))
 
-    def update(self, key):
+    def switch_frames(self, key):
         if key == self.key:
             self.cur_frame = (self.cur_frame + 1) % len(self.frames)
         else:
@@ -146,6 +145,9 @@ class AnimatedSprite(pygame.sprite.Sprite):
             self.frames = self.sheet_dict[self.key]
             self.cur_frame = 0
         self.image = self.frames[self.cur_frame]
+
+    def update(self):
+        pass
 
 
 class Knight(AnimatedSprite):
@@ -159,38 +161,27 @@ class Knight(AnimatedSprite):
     def update(self):
         delta = 5
         if keys[pygame.K_LEFT]:
-            super().update('left')
+            super().switch_frames('left')
             self.rect.x -= delta
         elif keys[pygame.K_RIGHT]:
-            super().update('right')
+            super().switch_frames('right')
             self.rect.x += delta
         elif keys[pygame.K_UP]:
-            super().update('up')
+            super().switch_frames('up')
             self.rect.y -= delta
         elif keys[pygame.K_DOWN]:
-            super().update('down')
+            super().switch_frames('down')
             self.rect.y += delta
         # if pygame.sprite.spritecollideany(self, enemies):
         #     end_game()
 
 
-class Enemy(Sprite):
-
-    def __init__(self, x, y):
-        super().__init__(enemies, x, y, 'enemy.png')
-
-    def update(self, pattern):  # meaningless for now; will move by a certain pattern on a field
-        delta = 5
-        for tile in pattern:
-            self.rect.x += delta
-
-
 class CrystalEnemy(AnimatedSprite):
     """Враг кристальный жук."""
-    def __init__(self, x, y):
-        super().__init__(animated_enemies, x, y,
+    def __init__(self, x, y, turn='right'):
+        super().__init__(enemies, x, y,
                          {'right': (load_image('going_right.png'), 5, 1), 'left': (load_image('going_left.png'), 5, 1)})
-        self.turn = 'right'
+        self.turn = turn  # more flexible
         self.delta_x = 0
         self.vx = 2
         # Расстояние на которое в одну сторону пердвигается жук
@@ -209,7 +200,7 @@ class CrystalEnemy(AnimatedSprite):
                 self.delta_x -= self.vx
             else:
                 self.turn = 'right'
-        super().update(self.turn)
+        super().switch_frames(self.turn)
 
 
 start_screen()
@@ -224,8 +215,8 @@ while running:
     keys = pygame.key.get_pressed()
     hero.update()
     tiles.draw(screen)
-    animated_enemies.update()
-    animated_enemies.draw(screen)
+    enemies.update()
+    enemies.draw(screen)
     hero_group.draw(screen)
     clock.tick(FPS)
     pygame.display.flip()
