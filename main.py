@@ -3,7 +3,7 @@ import os
 import sys
 
 pygame.init()
-screen_size = WIDTH, HEIGHT = (550, 550)
+screen_size = WIDTH, HEIGHT = (550, 600)
 screen = pygame.display.set_mode(screen_size)
 pygame.display.set_caption('Hollow Knight')
 clock = pygame.time.Clock()
@@ -160,8 +160,9 @@ class Knight(AnimatedSprite):
         elif keys[pygame.K_DOWN]:
             super().switch_frames('down')
             self.rect.y += delta
-        # if pygame.sprite.spritecollideany(self, enemies):
-        #     end_game()
+        if pygame.sprite.spritecollideany(self, enemies):
+            return False
+        return True
 
 
 class CrystalEnemy(AnimatedSprite):
@@ -192,7 +193,7 @@ class CrystalEnemy(AnimatedSprite):
         super().switch_frames(self.turn)
 
 
-class Menu:  # start, between levels (fail & success), end(?), rules, levels, etc.
+class Menu:
 
     def __init__(self, background, widgets: list):
         self.widgets = widgets
@@ -218,14 +219,13 @@ class Start(Menu):
 
     def __init__(self, background, widgets: list):
         super().__init__(background, widgets)
-        self.actions = ['start', 'help', 'levels']
 
     def run(self):
         screen.blit(self.background, (0, 0))
-        intro_text = ['Game Name', '', '', 'Something else']
+        text = ['Game Name', '', '', 'Something else']
         font = pygame.font.Font(None, 30)  # change to aesthetically pleasing font + figure out size
         text_coord = 50  # figure out best text placement
-        display_text(intro_text, text_coord, font)
+        display_text(text, text_coord, font)
         return super().run()
 
 
@@ -233,45 +233,121 @@ class Help(Menu):
 
     def __init__(self, background, widgets: list):
         super().__init__(background, widgets)
-        self.actions = ['back']
 
     def run(self):
         screen.blit(self.background, (0, 0))
-        help_text = ['Help', '', '', 'How to play']
-        font = pygame.font.Font(None, 30)  # change to aesthetically pleasing font + figure out size
-        text_coord = 50  # figure out best text placement
-        display_text(help_text, text_coord, font)
+        text = ['Help', '', '', 'How to play']
+        font = pygame.font.Font(None, 30)
+        text_coord = 50
+        display_text(text, text_coord, font)
         return super().run()
 
 
-def game(level_map):
-    global keys  # I really don't like this...
-    level_map = load_level(level_map)
+class Levels(Menu):
+
+    def __init__(self, background, widgets: list):
+        super().__init__(background, widgets)
+
+    def run(self):
+        screen.blit(self.background, (0, 0))
+        text = ['Levels']
+        font = pygame.font.Font(None, 30)
+        text_coord = 50
+        display_text(text, text_coord, font)
+        return super().run()
+
+
+class End(Menu):
+
+    def __init__(self, background, widgets: list):
+        super().__init__(background, widgets)
+
+    def run(self):
+        screen.blit(self.background, (0, 0))
+        if passed_level:
+            text = ['Congratulations!', f'You passed level {cur_level + 1}']
+        else:
+            text = ['Try harder!', f'Level {cur_level + 1} not passed']
+        font = pygame.font.Font(None, 30)
+        text_coord = 50
+        display_text(text, text_coord, font)
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    close()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    for widget in self.widgets:
+                        if (cur_level == 0 and widget.action == 'prev' or
+                                cur_level == len(level_maps) - 1 and widget.action == 'next'):
+                            continue
+                        action = widget.update(event)
+                        if action is not None:
+                            return action
+            for widget in self.widgets:
+                if (cur_level == 0 and widget.action == 'prev' or
+                        cur_level == len(level_maps) - 1 and widget.action == 'next'):
+                    continue
+                widget.draw()
+            pygame.display.flip()
+            clock.tick(FPS)
+
+
+def game():
+    global keys, passed_level
+    level_map = load_level(level_maps[cur_level])
     hero, max_x, max_y = generate_level(level_map)
     running = True
-    while running:
+    while running and passed_level:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+                close()
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if quit_btn.update(event) is not None:
+                    passed_level = False
+                    return
         keys = pygame.key.get_pressed()
-        hero.update()
+        passed_level = hero.update()
         tiles.draw(screen)
         enemies.update()
         enemies.draw(screen)
         hero_group.draw(screen)
+        quit_btn.draw()
         clock.tick(FPS)
         pygame.display.flip()
 
 
-start_buttons = [Button(10, 300, 50, 30, 'start'), Button(80, 300, 50, 30, 'help'), Button(150, 300, 60, 30, 'levels')]
-help_buttons = [Button(10, 10, 50, 30, 'back')]
+start_btns = [Button(10, 300, 50, 30, 'start'), Button(80, 300, 50, 30, 'help'), Button(150, 300, 60, 30, 'levels')]
+help_btns = [Button(10, 10, 50, 30, 'back')]
+levels_btns = [Button(10, 10, 50, 30, 'back'), Button(10, 50, 50, 30, '1')]
+end_btns = [Button(10, 300, 50, 30, 'prev'), Button(80, 300, 50, 30, 'replay'),
+            Button(150, 300, 50, 30, 'next'), Button(10, 350, 50, 30, 'back')]
+quit_btn = Button(10, 550, 50, 30, 'quit')
 
-screens = [Start('background.jpg', start_buttons), Help('background.jpg', help_buttons)]
+screens = [Start('background.jpg', start_btns), Help('background.jpg', help_btns),
+           Levels('background.jpg', levels_btns), End('background.jpg', end_btns)]
 cur_screen = screens[0]
-action = cur_screen.run()
-if action == 'start':
-    keys = ()
-    game('map.txt')
-elif action == 'help':
-    pass
-pygame.quit()
+
+cur_level = 0
+level_maps = ['map.txt']
+while True:
+    action = cur_screen.run()
+    if action in ('start', 'replay', '1', ):
+        for group in (tiles, hero_group, obstacles, coins, enemies):
+            group.empty()
+        passed_level = True
+        if action in ('1', ):
+            cur_level = int(action) - 1
+        keys = ()
+        game()
+        cur_screen = screens[3]
+    elif action == 'help':
+        cur_screen = screens[1]
+    elif action == 'levels':
+        cur_screen = screens[2]
+    elif action == 'back':
+        cur_screen = screens[0]
+    elif action == 'prev':
+        cur_level -= 1
+    elif action == 'next':
+        cur_level += 1
