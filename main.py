@@ -55,6 +55,10 @@ def generate_level(level):
                 Tile(x, y, tile_images['empty'])
                 CrystalEnemy(x, y)
                 level[y][x] = '.'
+            elif level[y][x] == '*':
+                Tile(x, y, tile_images['empty'])
+                GruzzerEnemy(x, y)
+                level[y][x] = '.'
     return hero, x, y
 
 
@@ -77,19 +81,22 @@ def display_text(text: list, text_coord: int, font=pygame.font.Font(None, 30), c
 class Button:  # class for buttons on operational screens: opening, closing, levels, etc.
 
     def __init__(self, x, y, width, height, action, color=(248, 222, 173)):
-        self.x, self.y, self.width, self.height = x, y, width, height
+        self.rect = pygame.Rect(x, y, width, height)
+        # self.x, self.y, self.width, self.height = x, y, width, height
         self.color = color
         self.action = action
 
     def draw(self):
-        pygame.draw.rect(screen, self.color, (self.x, self.y, self.width, self.height), border_radius=5)
+        pygame.draw.rect(screen, self.color, self.rect, border_radius=5)
         font = pygame.font.Font(None, 30)
         string_rendered = font.render(self.action, True, (0, 0, 0))
-        string_rect = (self.x, self.y + 5)
+        string_rect = (self.rect.x, self.rect.y + 5)
         screen.blit(string_rendered, string_rect)
 
     def update(self, event):  # update when clicked
-        if self.x <= event.pos[0] <= self.x + self.width and self.y <= event.pos[1] <= self.y + self.height:
+        # if self.x <= event.pos[0] <= self.x + self.width and self.y <= event.pos[1] <= self.y + self.height:
+        #     return self.action
+        if self.rect.collidepoint(event.pos):
             return self.action
 
 
@@ -166,30 +173,56 @@ class Knight(AnimatedSprite):
 
 class CrystalEnemy(AnimatedSprite):
     """Враг кристальный жук."""
-
-    def __init__(self, x, y, turn='right'):
+    def __init__(self, x, y):
         super().__init__(enemies, x, y,
-                         {'right': (load_image('going_right.png'), 5, 1), 'left': (load_image('going_left.png'), 5, 1)})
-        self.turn = turn  # more flexible
-        self.delta_x = 0
+                         {'right': (load_image('going_right.png'), 5, 1),
+                          'left': (load_image('going_left.png'), 5, 1)})
+        # Traffic pattern of the bug
+        self.pattern = ['right'] * 60 + ['left'] * 60
+        self.index = 0
+        self.turn = self.pattern[self.index]
         self.vx = 2
-        # Расстояние на которое в одну сторону пердвигается жук
-        self.length = 60
 
     def update(self):
         if self.turn == 'right':
-            if self.delta_x < self.length:
-                self.rect.x += self.vx
-                self.delta_x += self.vx
-            else:
-                self.turn = 'left'
+            self.rect.x += self.vx
         elif self.turn == 'left':
-            if self.delta_x > 0:
-                self.rect.x -= self.vx
-                self.delta_x -= self.vx
-            else:
-                self.turn = 'right'
+            self.rect.x -= self.vx
+        self.index = (self.index + 1) % len(self.pattern)
+        self.turn = self.pattern[self.index]
         super().switch_frames(self.turn)
+
+
+class GruzzerEnemy(AnimatedSprite):
+    """Враг летающая муха Gruzzer."""
+    def __init__(self, x, y):
+        super().__init__(enemies, x, y,
+                         {'move': (load_image('flying.png'), 4, 1)})
+        self.length = 10
+        self.pattern = ['right', 'right', 'right', 'down', 'right', 'down', 'right', 'down', 'down', 'down',
+                        'left', 'down', 'left', 'down', 'left', 'left', 'left', 'up', 'left', 'up', 'left',
+                        'up', 'up', 'up', 'right', 'up', 'right', 'up']
+        self.result = []
+        for value in self.pattern:
+            self.result += [value] * self.length
+        self.pattern = self.result[::]
+
+        self.index = 0
+        self.turn = self.pattern[self.index]
+        self.vx = 2
+
+    def update(self):
+        if self.turn == 'right':
+            self.rect.x += self.vx
+        elif self.turn == 'left':
+            self.rect.x -= self.vx
+        elif self.turn == 'up':
+            self.rect.y -= self.vx
+        elif self.turn == 'down':
+            self.rect.y += self.vx
+        self.index = (self.index + 1) % len(self.pattern)
+        self.turn = self.pattern[self.index]
+        super().switch_frames('move')
 
 
 class Menu:  # start, between levels (fail & success), end(?), rules, levels, etc.
