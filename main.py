@@ -16,6 +16,7 @@ hero_group = pygame.sprite.Group()
 obstacles = pygame.sprite.Group()
 coins = pygame.sprite.Group()
 enemies = pygame.sprite.Group()
+portal = pygame.sprite.Group()
 
 
 def load_image(name, color_key=None):
@@ -58,6 +59,14 @@ def generate_level(level):
             elif level[y][x] == '*':
                 Tile(x, y, tile_images['empty'])
                 GruzzerEnemy(x, y)
+                level[y][x] = '.'
+            elif level[y][x] == '$':
+                Tile(x, y, tile_images['empty'])
+                Coin(x, y)
+                level[y][x] = '.'
+            elif level[y][x] == '/':
+                Tile(x, y, tile_images['empty'])
+                Portal(x, y)
                 level[y][x] = '.'
     return hero, x, y
 
@@ -105,6 +114,14 @@ class Tile(pygame.sprite.Sprite):
         self.rect = self.image.get_rect().move(tile_width * x, tile_height * y)
 
 
+class Portal(pygame.sprite.Sprite):
+
+    def __init__(self, x, y):
+        super().__init__(portal)
+        self.image = load_image('portal.png')
+        self.rect = self.image.get_rect().move(tile_width * x, tile_height * y)
+
+
 class AnimatedSprite(pygame.sprite.Sprite):
     def __init__(self, group, x, y, sheet_dict):
         super().__init__(group)
@@ -118,6 +135,7 @@ class AnimatedSprite(pygame.sprite.Sprite):
         self.cur_frame = 0
         self.image = self.frames[self.cur_frame]
         self.rect = self.rect.move(x * tile_width, y * tile_height)
+        self.mask = pygame.mask.from_surface(self.image)  # for better collision detection
 
     def cut_sheet(self, sheet, columns, rows):
         self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
@@ -168,9 +186,14 @@ class Knight(AnimatedSprite):
             super().switch_frames('down')
             if self.rect.y + self.rect.height + delta <= HEIGHT - 50:
                 self.rect.y += delta
-        if pygame.sprite.spritecollideany(self, enemies):
-            return False
-        return True
+        for enemy in enemies:
+            if pygame.sprite.collide_mask(self, enemy):
+                return False, False
+        if any(pygame.sprite.spritecollide(self, coins, True)):
+            coin_music.play()
+        if pygame.sprite.spritecollideany(self, portal):
+            return True, False
+        return True, True
 
 
 class CrystalEnemy(AnimatedSprite):
@@ -225,6 +248,15 @@ class GruzzerEnemy(AnimatedSprite):
         self.index = (self.index + 1) % len(self.pattern)
         self.turn = self.pattern[self.index]
         super().switch_frames('move')
+
+
+class Coin(AnimatedSprite):
+
+    def __init__(self, x, y):
+        super().__init__(coins, x, y, {'coin': (load_image('coin.png'), 10, 1)})
+
+    def update(self):
+        super().switch_frames('coin')
 
 
 class Menu:
@@ -302,7 +334,8 @@ class End(Menu):
     def run(self):
         screen.blit(self.background, (0, 0))
         if passed_level:
-            text = ['Congratulations!', f'You passed level {cur_level + 1}', 'Coins: x']
+            text = ['Congratulations!', f'You passed level {cur_level + 1}',
+                    f'Coins captured: {coins_captured}/{coins_number}']
         else:
             text = ['Try harder!', f'Level {cur_level + 1} not passed']
         font = pygame.font.SysFont('roboto', 30)
@@ -330,24 +363,27 @@ class End(Menu):
 
 
 def game():
-    global keys, passed_level
+    global keys, passed_level, coins_number
     level_map = load_level(level_maps[cur_level])
     hero, max_x, max_y = generate_level(level_map)
+    coins_number = len(coins.sprites())
     running = True
     while running and passed_level:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
                 close()
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if quit_btn.update(event) is not None:
                     passed_level = False
                     return
         keys = pygame.key.get_pressed()
-        passed_level = hero.update()
+        passed_level, running = hero.update()
         tiles.draw(screen)
         enemies.update()
         enemies.draw(screen)
+        coins.update()
+        coins.draw(screen)
+        portal.draw(screen)
         hero_group.draw(screen)
         quit_btn.draw()
         clock.tick(FPS)
@@ -368,6 +404,10 @@ cur_screen = screens[0]
 
 cur_level = 0
 level_maps = ['map1.txt', 'map2.txt', 'map3.txt', 'map4.txt', 'map5.txt']
+
+pygame.mixer.music.load('data/music.wav')
+pygame.mixer.music.play(-1)
+coin_music = pygame.mixer.Sound('data/coin_music.wav')
 while True:
     action = cur_screen.run()
     if action == 'help':
@@ -377,8 +417,9 @@ while True:
     elif action == 'back':
         cur_screen = screens[0]
     else:
-        for group in (tiles, hero_group, obstacles, coins, enemies):
+        for group in (tiles, hero_group, obstacles, coins, enemies, portal):
             group.empty()
+        coins_number = 0
         passed_level = True
         if action in ('1', '2', '3', '4', '5'):
             cur_level = int(action) - 1
@@ -388,4 +429,5 @@ while True:
             cur_level += 1
         keys = ()
         game()
+        coins_captured = coins_number - len(coins.sprites())
         cur_screen = screens[3]
