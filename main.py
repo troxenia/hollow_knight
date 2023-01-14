@@ -55,6 +55,10 @@ def generate_level(level):
                 Tile(x, y, tile_images['empty'])
                 CrystalEnemy(x, y)
                 level[y][x] = '.'
+            elif level[y][x] == '*':
+                Tile(x, y, tile_images['empty'])
+                GruzzerEnemy(x, y)
+                level[y][x] = '.'
     return hero, x, y
 
 
@@ -63,7 +67,7 @@ def close():
     sys.exit()
 
 
-def display_text(text: list, text_coord: int, font=pygame.font.Font(None, 30), color=pygame.Color('white')):
+def display_text(text: list, text_coord: int, font=pygame.font.Font(None, 30), color=pygame.Color(248, 222, 173)):
     for line in text:
         string_rendered = font.render(line, True, color)
         text_rect = string_rendered.get_rect()
@@ -74,22 +78,22 @@ def display_text(text: list, text_coord: int, font=pygame.font.Font(None, 30), c
         screen.blit(string_rendered, text_rect)
 
 
-class Button:  # class for buttons on operational screens: opening, closing, levels, etc.
+class Button:
 
     def __init__(self, x, y, width, height, action, color=(248, 222, 173)):
-        self.x, self.y, self.width, self.height = x, y, width, height
+        self.rect = pygame.Rect(x, y, width, height)
         self.color = color
         self.action = action
 
     def draw(self):
-        pygame.draw.rect(screen, self.color, (self.x, self.y, self.width, self.height), border_radius=5)
+        pygame.draw.rect(screen, self.color, self.rect, border_radius=5)
         font = pygame.font.Font(None, 30)
         string_rendered = font.render(self.action, True, (0, 0, 0))
-        string_rect = (self.x, self.y + 5)
+        string_rect = (self.rect.x + 5, self.rect.y + 5)
         screen.blit(string_rendered, string_rect)
 
-    def update(self, event):  # update when clicked
-        if self.x <= event.pos[0] <= self.x + self.width and self.y <= event.pos[1] <= self.y + self.height:
+    def update(self, event):
+        if self.rect.collidepoint(event.pos):
             return self.action
 
 
@@ -150,16 +154,20 @@ class Knight(AnimatedSprite):
         delta = 5
         if keys[pygame.K_LEFT]:
             super().switch_frames('left')
-            self.rect.x -= delta
+            if self.rect.x >= delta:
+                self.rect.x -= delta
         elif keys[pygame.K_RIGHT]:
             super().switch_frames('right')
-            self.rect.x += delta
+            if self.rect.x + self.rect.width + delta <= WIDTH:
+                self.rect.x += delta
         elif keys[pygame.K_UP]:
             super().switch_frames('up')
-            self.rect.y -= delta
+            if self.rect.y >= delta:
+                self.rect.y -= delta
         elif keys[pygame.K_DOWN]:
             super().switch_frames('down')
-            self.rect.y += delta
+            if self.rect.y + self.rect.height + delta <= HEIGHT - 50:
+                self.rect.y += delta
         if pygame.sprite.spritecollideany(self, enemies):
             return False
         return True
@@ -167,30 +175,56 @@ class Knight(AnimatedSprite):
 
 class CrystalEnemy(AnimatedSprite):
     """Враг кристальный жук."""
-
-    def __init__(self, x, y, turn='right'):
+    def __init__(self, x, y):
         super().__init__(enemies, x, y,
-                         {'right': (load_image('going_right.png'), 5, 1), 'left': (load_image('going_left.png'), 5, 1)})
-        self.turn = turn  # more flexible
-        self.delta_x = 0
+                         {'right': (load_image('going_right.png'), 5, 1),
+                          'left': (load_image('going_left.png'), 5, 1)})
+        # Traffic pattern of the bug
+        self.pattern = ['right'] * 60 + ['left'] * 60
+        self.index = 0
+        self.turn = self.pattern[self.index]
         self.vx = 2
-        # Расстояние на которое в одну сторону пердвигается жук
-        self.length = 60
 
     def update(self):
         if self.turn == 'right':
-            if self.delta_x < self.length:
-                self.rect.x += self.vx
-                self.delta_x += self.vx
-            else:
-                self.turn = 'left'
+            self.rect.x += self.vx
         elif self.turn == 'left':
-            if self.delta_x > 0:
-                self.rect.x -= self.vx
-                self.delta_x -= self.vx
-            else:
-                self.turn = 'right'
+            self.rect.x -= self.vx
+        self.index = (self.index + 1) % len(self.pattern)
+        self.turn = self.pattern[self.index]
         super().switch_frames(self.turn)
+
+
+class GruzzerEnemy(AnimatedSprite):
+    """Враг летающая муха Gruzzer."""
+    def __init__(self, x, y):
+        super().__init__(enemies, x, y,
+                         {'move': (load_image('flying.png'), 4, 1)})
+        self.length = 10
+        self.pattern = ['right', 'right', 'right', 'down', 'right', 'down', 'right', 'down', 'down', 'down',
+                        'left', 'down', 'left', 'down', 'left', 'left', 'left', 'up', 'left', 'up', 'left',
+                        'up', 'up', 'up', 'right', 'up', 'right', 'up']
+        self.result = []
+        for value in self.pattern:
+            self.result += [value] * self.length
+        self.pattern = self.result[::]
+
+        self.index = 0
+        self.turn = self.pattern[self.index]
+        self.vx = 2
+
+    def update(self):
+        if self.turn == 'right':
+            self.rect.x += self.vx
+        elif self.turn == 'left':
+            self.rect.x -= self.vx
+        elif self.turn == 'up':
+            self.rect.y -= self.vx
+        elif self.turn == 'down':
+            self.rect.y += self.vx
+        self.index = (self.index + 1) % len(self.pattern)
+        self.turn = self.pattern[self.index]
+        super().switch_frames('move')
 
 
 class Menu:
@@ -222,9 +256,9 @@ class Start(Menu):
 
     def run(self):
         screen.blit(self.background, (0, 0))
-        text = ['Game Name', '', '', 'Something else']
-        font = pygame.font.Font(None, 30)  # change to aesthetically pleasing font + figure out size
-        text_coord = 50  # figure out best text placement
+        text = ['Hollow Knight', '', '', 'Run for your life', '(and coins)']
+        font = pygame.font.SysFont('roboto', 30, True)
+        text_coord = 50
         display_text(text, text_coord, font)
         return super().run()
 
@@ -236,10 +270,13 @@ class Help(Menu):
 
     def run(self):
         screen.blit(self.background, (0, 0))
-        text = ['Help', '', '', 'How to play']
-        font = pygame.font.Font(None, 30)
-        text_coord = 50
-        display_text(text, text_coord, font)
+        title = ['How to play']
+        text = ['1', '2', '3']
+        title_font = pygame.font.SysFont('roboto', 30)
+        text_font = pygame.font.SysFont('roboto', 25)
+        title_coord, text_coord = 50, 120
+        display_text(title, title_coord, title_font)
+        display_text(text, text_coord, text_font)
         return super().run()
 
 
@@ -251,7 +288,7 @@ class Levels(Menu):
     def run(self):
         screen.blit(self.background, (0, 0))
         text = ['Levels']
-        font = pygame.font.Font(None, 30)
+        font = pygame.font.SysFont('roboto', 30)
         text_coord = 50
         display_text(text, text_coord, font)
         return super().run()
@@ -265,10 +302,10 @@ class End(Menu):
     def run(self):
         screen.blit(self.background, (0, 0))
         if passed_level:
-            text = ['Congratulations!', f'You passed level {cur_level + 1}']
+            text = ['Congratulations!', f'You passed level {cur_level + 1}', 'Coins: x']
         else:
             text = ['Try harder!', f'Level {cur_level + 1} not passed']
-        font = pygame.font.Font(None, 30)
+        font = pygame.font.SysFont('roboto', 30)
         text_coord = 50
         display_text(text, text_coord, font)
         while True:
@@ -317,37 +354,38 @@ def game():
         pygame.display.flip()
 
 
-start_btns = [Button(10, 300, 50, 30, 'start'), Button(80, 300, 50, 30, 'help'), Button(150, 300, 60, 30, 'levels')]
-help_btns = [Button(10, 10, 50, 30, 'back')]
-levels_btns = [Button(10, 10, 50, 30, 'back'), Button(10, 50, 50, 30, '1')]
-end_btns = [Button(10, 300, 50, 30, 'prev'), Button(80, 300, 50, 30, 'replay'),
-            Button(150, 300, 50, 30, 'next'), Button(10, 350, 50, 30, 'back')]
-quit_btn = Button(10, 550, 50, 30, 'quit')
+start_btns = [Button(20, 450, 100, 50, 'start'), Button(140, 450, 100, 50, 'help'), Button(260, 450, 100, 50, 'levels')]
+help_btns = [Button(10, 10, 60, 30, 'back')]
+levels_btns = [Button(10, 10, 60, 30, 'back'), Button(10, 120, 530, 50, '1'), Button(10, 190, 530, 50, '2'),
+               Button(10, 260, 530, 50, '3'), Button(10, 330, 530, 50, '4'), Button(10, 400, 530, 50, '5')]
+end_btns = [Button(10, 10, 60, 30, 'back'), Button(20, 450, 100, 50, 'prev'), Button(140, 450, 100, 50, 'replay'),
+            Button(260, 450, 100, 50, 'next')]
+quit_btn = Button(10, 560, 50, 30, 'quit')
 
 screens = [Start('background.jpg', start_btns), Help('background.jpg', help_btns),
            Levels('background.jpg', levels_btns), End('background.jpg', end_btns)]
 cur_screen = screens[0]
 
 cur_level = 0
-level_maps = ['map.txt']
+level_maps = ['map1.txt', 'map2.txt', 'map3.txt', 'map4.txt', 'map5.txt']
 while True:
     action = cur_screen.run()
-    if action in ('start', 'replay', '1', ):
-        for group in (tiles, hero_group, obstacles, coins, enemies):
-            group.empty()
-        passed_level = True
-        if action in ('1', ):
-            cur_level = int(action) - 1
-        keys = ()
-        game()
-        cur_screen = screens[3]
-    elif action == 'help':
+    if action == 'help':
         cur_screen = screens[1]
     elif action == 'levels':
         cur_screen = screens[2]
     elif action == 'back':
         cur_screen = screens[0]
-    elif action == 'prev':
-        cur_level -= 1
-    elif action == 'next':
-        cur_level += 1
+    else:
+        for group in (tiles, hero_group, obstacles, coins, enemies):
+            group.empty()
+        passed_level = True
+        if action in ('1', '2', '3', '4', '5'):
+            cur_level = int(action) - 1
+        elif action == 'prev':
+            cur_level -= 1
+        elif action == 'next':
+            cur_level += 1
+        keys = ()
+        game()
+        cur_screen = screens[3]
