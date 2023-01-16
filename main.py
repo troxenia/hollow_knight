@@ -9,7 +9,7 @@ pygame.display.set_caption('Hollow Knight')
 clock = pygame.time.Clock()
 FPS = 50
 tile_width = tile_height = 50
-tile_images = {'empty': 'empty.jpg'}
+tile_images = {'empty': 'empty.png'}
 
 tiles = pygame.sprite.Group()
 hero_group = pygame.sprite.Group()
@@ -17,6 +17,7 @@ obstacles = pygame.sprite.Group()
 coins = pygame.sprite.Group()
 enemies = pygame.sprite.Group()
 portal = pygame.sprite.Group()
+sound_group = pygame.sprite.Group()
 
 
 def load_image(name, color_key=None):
@@ -68,6 +69,11 @@ def generate_level(level):
                 Tile(x, y, tile_images['empty'])
                 Portal(x, y)
                 level[y][x] = '.'
+            elif level[y][x] in ['1', '2', '3']:
+                # Препятствия в одну клетку разных видов
+                Tile(x, y, tile_images['empty'])
+                Obstacle(x, y, 'obstacle{}.png'.format(level[y][x]))
+                level[y][x] = '.'
     return hero, x, y
 
 
@@ -114,12 +120,41 @@ class Tile(pygame.sprite.Sprite):
         self.rect = self.image.get_rect().move(tile_width * x, tile_height * y)
 
 
+class Obstacle(pygame.sprite.Sprite):
+
+    def __init__(self, x, y, filename):
+        super().__init__(obstacles)
+        self.image = load_image(filename)
+        self.rect = self.image.get_rect().move(tile_width * x, tile_height * y)
+        self.mask = pygame.mask.from_surface(self.image)
+
+
 class Portal(pygame.sprite.Sprite):
 
     def __init__(self, x, y):
         super().__init__(portal)
         self.image = load_image('portal.png')
-        self.rect = self.image.get_rect().move(tile_width * x, tile_height * y)
+        self.rect = self.image.get_rect().move(tile_width * x + 6, tile_height * y)
+
+
+class Sound(pygame.sprite.Sprite):
+    image_on, image_off = (load_image('sound_on.png'), load_image('sound_off.png'))
+
+    def __init__(self, x, y):
+        super().__init__(sound_group)
+        self.image = self.image_on
+        self.rect = self.image.get_rect().move(x, y)
+
+    def update(self, event):
+        if self.rect.collidepoint(event.pos):
+            global sound_on
+            if sound_on:
+                self.image = self.image_off
+                pygame.mixer.music.stop()
+            else:
+                self.image = self.image_on
+                pygame.mixer.music.play(-1)
+            sound_on = not sound_on
 
 
 class AnimatedSprite(pygame.sprite.Sprite):
@@ -168,8 +203,15 @@ class Knight(AnimatedSprite):
                                             'up': (load_image('running_up.png'), 6, 1),
                                             'down': (load_image('running_down.png'), 6, 1)})
 
+    def collide_with_group(self, group):
+        """Столкновение с группой по маске"""
+        for sprite in group:
+            if pygame.sprite.collide_mask(self, sprite):
+                return True
+
     def update(self):
         delta = 5
+        x, y = self.rect.x, self.rect.y
         if keys[pygame.K_LEFT]:
             super().switch_frames('left')
             if self.rect.x >= delta:
@@ -186,10 +228,11 @@ class Knight(AnimatedSprite):
             super().switch_frames('down')
             if self.rect.y + self.rect.height + delta <= HEIGHT - 50:
                 self.rect.y += delta
-        for enemy in enemies:
-            if pygame.sprite.collide_mask(self, enemy):
-                return False, False
-        if any(pygame.sprite.spritecollide(self, coins, True)):
+        if self.collide_with_group(obstacles):
+            self.rect.x, self.rect.y = x, y
+        if self.collide_with_group(enemies):
+            return False, False
+        if any(pygame.sprite.spritecollide(self, coins, True)) and sound_on:
             coin_music.play()
         if pygame.sprite.spritecollideany(self, portal):
             return True, False
@@ -254,6 +297,7 @@ class Coin(AnimatedSprite):
 
     def __init__(self, x, y):
         super().__init__(coins, x, y, {'coin': (load_image('coin.png'), 10, 1)})
+        self.rect = self.image.get_rect().move(x * tile_width + 10, y * tile_height + 10)
 
     def update(self):
         super().switch_frames('coin')
@@ -292,7 +336,23 @@ class Start(Menu):
         font = pygame.font.SysFont('roboto', 30, True)
         text_coord = 50
         display_text(text, text_coord, font)
-        return super().run()
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    close()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    for widget in self.widgets:
+                        action = widget.update(event)
+                        if action is not None:
+                            return action
+                    sound_group.update(event)
+            screen.blit(self.background, (0, 0))
+            display_text(text, text_coord, font)
+            for widget in self.widgets:
+                widget.draw()
+            sound_group.draw(screen)
+            pygame.display.flip()
+            clock.tick(FPS)
 
 
 class Help(Menu):
@@ -303,8 +363,9 @@ class Help(Menu):
     def run(self):
         screen.blit(self.background, (0, 0))
         title = ['How to play']
-        text = ['1', '2', '3']
-        title_font = pygame.font.SysFont('roboto', 30)
+        text = ['Use arrows to move.', '', 'Your main goal: reach the portal before ', 'confronting the enemy.', '',
+                'Collect coins to make score higher.']
+        title_font = pygame.font.SysFont('roboto', 30, True)
         text_font = pygame.font.SysFont('roboto', 25)
         title_coord, text_coord = 50, 120
         display_text(title, title_coord, title_font)
@@ -320,7 +381,7 @@ class Levels(Menu):
     def run(self):
         screen.blit(self.background, (0, 0))
         text = ['Levels']
-        font = pygame.font.SysFont('roboto', 30)
+        font = pygame.font.SysFont('roboto', 30, True)
         text_coord = 50
         display_text(text, text_coord, font)
         return super().run()
@@ -334,13 +395,17 @@ class End(Menu):
     def run(self):
         screen.blit(self.background, (0, 0))
         if passed_level:
-            text = ['Congratulations!', f'You passed level {cur_level + 1}',
+            title = ['Congratulations!']
+            text = [f'You passed level {cur_level + 1}',
                     f'Coins captured: {coins_captured}/{coins_number}']
         else:
-            text = ['Try harder!', f'Level {cur_level + 1} not passed']
-        font = pygame.font.SysFont('roboto', 30)
-        text_coord = 50
-        display_text(text, text_coord, font)
+            title = ['Try harder!']
+            text = [f'Level {cur_level + 1} not passed']
+        title_font = pygame.font.SysFont('roboto', 30, True)
+        text_font = pygame.font.SysFont('roboto', 30)
+        title_coord, text_coord = 50, 120
+        display_text(title, title_coord, title_font)
+        display_text(text, text_coord, text_font)
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -379,6 +444,7 @@ def game():
         keys = pygame.key.get_pressed()
         passed_level, running = hero.update()
         tiles.draw(screen)
+        obstacles.draw(screen)
         enemies.update()
         enemies.draw(screen)
         coins.update()
@@ -405,9 +471,11 @@ cur_screen = screens[0]
 cur_level = 0
 level_maps = ['map1.txt', 'map2.txt', 'map3.txt', 'map4.txt', 'map5.txt']
 
+sound_on = True
 pygame.mixer.music.load('data/music.wav')
 pygame.mixer.music.play(-1)
 coin_music = pygame.mixer.Sound('data/coin_music.wav')
+Sound(420, 445)
 while True:
     action = cur_screen.run()
     if action == 'help':
