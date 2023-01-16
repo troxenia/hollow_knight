@@ -59,6 +59,11 @@ def generate_level(level):
                 Tile(x, y, tile_images['empty'])
                 GruzzerEnemy(x, y)
                 level[y][x] = '.'
+            elif level[y][x] in ['1', '2', '3']:
+                # Препятствия в одну клетку разный видов
+                Tile(x, y, tile_images['empty'])
+                Obstacle(x, y, 'obstacle{}.png'.format(level[y][x]))
+                level[y][x] = '.'
     return hero, x, y
 
 
@@ -103,6 +108,15 @@ class Tile(pygame.sprite.Sprite):
         super().__init__(tiles)
         self.image = load_image(filename)
         self.rect = self.image.get_rect().move(tile_width * x, tile_height * y)
+
+
+class Obstacle(pygame.sprite.Sprite):
+
+    def __init__(self, x, y, filename):
+        super().__init__(obstacles)
+        self.image = load_image(filename)
+        self.rect = self.image.get_rect().move(tile_width * x, tile_height * y)
+        self.mask = pygame.mask.from_surface(self.image)
 
 
 class AnimatedSprite(pygame.sprite.Sprite):
@@ -150,8 +164,15 @@ class Knight(AnimatedSprite):
                                             'up': (load_image('running_up.png'), 6, 1),
                                             'down': (load_image('running_down.png'), 6, 1)})
 
+    def collide_with_group(self, group):
+        """Столкновение с группой по маске"""
+        for sprite in group:
+            if pygame.sprite.collide_mask(self, sprite):
+                return True
+
     def update(self):
         delta = 5
+        x, y = self.rect.x, self.rect.y
         if keys[pygame.K_LEFT]:
             super().switch_frames('left')
             if self.rect.x >= delta:
@@ -168,7 +189,9 @@ class Knight(AnimatedSprite):
             super().switch_frames('down')
             if self.rect.y + self.rect.height + delta <= HEIGHT - 50:
                 self.rect.y += delta
-        if pygame.sprite.spritecollideany(self, enemies):
+        if self.collide_with_group(obstacles):
+            self.rect.x, self.rect.y = x, y
+        if self.collide_with_group(enemies):
             return False
         return True
 
@@ -346,6 +369,7 @@ def game():
         keys = pygame.key.get_pressed()
         passed_level = hero.update()
         tiles.draw(screen)
+        obstacles.draw(screen)
         enemies.update()
         enemies.draw(screen)
         hero_group.draw(screen)
@@ -365,6 +389,7 @@ quit_btn = Button(10, 560, 50, 30, 'quit')
 screens = [Start('background.jpg', start_btns), Help('background.jpg', help_btns),
            Levels('background.jpg', levels_btns), End('background.jpg', end_btns)]
 cur_screen = screens[0]
+
 
 cur_level = 0
 level_maps = ['map1.txt', 'map2.txt', 'map3.txt', 'map4.txt', 'map5.txt']
