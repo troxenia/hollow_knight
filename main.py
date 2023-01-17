@@ -241,6 +241,7 @@ class Knight(AnimatedSprite):
 
 class CrystalEnemy(AnimatedSprite):
     """Враг кристальный жук."""
+
     def __init__(self, x, y):
         super().__init__(enemies, x, y,
                          {'right': (load_image('going_right.png'), 5, 1),
@@ -281,13 +282,17 @@ class GruzzerEnemy(AnimatedSprite):
 
     def update(self):
         if self.turn == 'right':
-            self.rect.x += self.vx
+            if self.rect.x + self.rect.width + self.vx <= WIDTH:
+                self.rect.x += self.vx
         elif self.turn == 'left':
-            self.rect.x -= self.vx
+            if self.rect.x >= self.vx:
+                self.rect.x -= self.vx
         elif self.turn == 'up':
-            self.rect.y -= self.vx
+            if self.rect.y >= self.vx:
+                self.rect.y -= self.vx
         elif self.turn == 'down':
-            self.rect.y += self.vx
+            if self.rect.y + self.rect.height + self.vx <= HEIGHT - 50:
+                self.rect.y += self.vx
         self.index = (self.index + 1) % len(self.pattern)
         self.turn = self.pattern[self.index]
         super().switch_frames('move')
