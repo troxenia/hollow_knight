@@ -1,6 +1,7 @@
 import pygame
 import os
 import sys
+from bd_work import BdController
 
 pygame.init()
 screen_size = WIDTH, HEIGHT = (550, 600)
@@ -11,6 +12,9 @@ FPS = 50
 tile_width = tile_height = 50
 tile_images = {'empty': 'empty.png'}
 
+bd_cont = BdController('hollow_knight_bd.db')
+
+score = 0
 tiles = pygame.sprite.Group()
 hero_group = pygame.sprite.Group()
 obstacles = pygame.sprite.Group()
@@ -79,16 +83,18 @@ def generate_level(level):
 
 def close():
     pygame.quit()
+    bd_cont.close()
     sys.exit()
 
 
-def display_text(text: list, text_coord: int, font=pygame.font.Font(None, 30), color=pygame.Color(248, 222, 173)):
+def display_text(text: list, text_coord: int, font=pygame.font.Font(None, 30), color=pygame.Color(248, 222, 173),
+                 x_coord: int = 10):
     for line in text:
         string_rendered = font.render(line, True, color)
         text_rect = string_rendered.get_rect()
         text_coord += 10
         text_rect.top = text_coord
-        text_rect.x = 10
+        text_rect.x = x_coord
         text_coord += text_rect.height
         screen.blit(string_rendered, text_rect)
 
@@ -110,6 +116,57 @@ class Button:
     def update(self, event):
         if self.rect.collidepoint(event.pos):
             return self.action
+
+
+class InputLine:
+    """Строка ввода."""
+
+    def __init__(self, x, y, width, height, color=(248, 222, 173), active_color=(253, 249, 225),
+                 auto_text='Введите текст:'):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.color = color
+        self.active_color = active_color
+        self.cur_color = self.color
+        self.text = ''
+        self.auto_text = auto_text
+        self.active = False  # Активна или нет: писать или нет
+
+    def draw(self):
+        pygame.draw.rect(screen, self.cur_color, self.rect, border_radius=5)
+        font = pygame.font.Font(None, 30)
+        if not self.text and not self.active:
+            string_rendered = font.render(f'{self.auto_text}', True, (90, 92, 67))
+        else:
+            string_rendered = font.render(self.text, True, (0, 0, 0))
+        res_surface = string_rendered
+        if string_rendered.get_width() > self.rect.width:
+            res_surface = string_rendered.subsurface((string_rendered.get_width() - (self.rect.width - 10), 0,
+                                                      self.rect.width - 10, string_rendered.get_height()))
+        string_rect = (self.rect.x + 5, self.rect.y + 5)
+        screen.blit(res_surface, string_rect)
+
+    def update(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.rect.collidepoint(event.pos):
+                self.active = True
+                self.cur_color = self.active_color
+            else:
+                self.active = False
+                self.cur_color = self.color
+        if event.type == pygame.KEYDOWN:
+            if self.active:
+                if event.key != pygame.K_RETURN:
+                    if event.key == pygame.K_BACKSPACE:
+                        self.text = self.text[:-1]
+                    else:
+                        self.text += event.unicode
+
+    def reload(self):
+        self.text = ''
+        self.active = False
+
+    def get_text(self):
+        return self.text
 
 
 class Tile(pygame.sprite.Sprite):
@@ -264,6 +321,7 @@ class CrystalEnemy(AnimatedSprite):
 
 class GruzzerEnemy(AnimatedSprite):
     """Враг летающая муха Gruzzer."""
+
     def __init__(self, x, y):
         super().__init__(enemies, x, y,
                          {'move': (load_image('flying.png'), 4, 1)})
@@ -360,6 +418,52 @@ class Start(Menu):
             clock.tick(FPS)
 
 
+class SignUp(Menu):
+
+    def __init__(self, background, widgets: list, lines: list):
+        super().__init__(background, widgets)
+        self.lines = lines
+        self.show_error = False
+
+    def run(self):
+        screen.blit(self.background, (0, 0))
+        text = ['Authorize, please']
+        font = pygame.font.SysFont('roboto', 30, True)
+        text_coord = 50
+        display_text(text, text_coord, font)
+        text2 = ['Введите логин и пароль']
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    close()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    for widget in self.widgets:
+                        action = widget.update(event)
+                        if action is not None:
+                            if action == 'done':
+                                if not bd_cont.make_user(self.lines[0].get_text(), self.lines[1].get_text()):
+                                    self.show_error = True
+                                else:
+                                    self.show_error = False
+                                    for line in self.lines:
+                                        line.reload()
+                                    return action
+                            else:
+                                return action
+                for line in self.lines:
+                    line.update(event)
+            screen.blit(self.background, (0, 0))
+            display_text(text, text_coord, font, x_coord=160)
+            if self.show_error:
+                display_text(text2, 300, font, x_coord=140)
+            for widget in self.widgets:
+                widget.draw()
+            for line in self.lines:
+                line.draw()
+            pygame.display.flip()
+            clock.tick(FPS)
+
+
 class Help(Menu):
 
     def __init__(self, background, widgets: list):
@@ -403,6 +507,7 @@ class End(Menu):
             title = ['Congratulations!']
             text = [f'You passed level {cur_level + 1}',
                     f'Coins captured: {coins_captured}/{coins_number}']
+            score += coins_captured
         else:
             title = ['Try harder!']
             text = [f'Level {cur_level + 1} not passed']
@@ -461,7 +566,8 @@ def game():
         pygame.display.flip()
 
 
-start_btns = [Button(20, 450, 100, 50, 'start'), Button(140, 450, 100, 50, 'help'), Button(260, 450, 100, 50, 'levels')]
+start_btns = [Button(20, 490, 100, 50, 'start'), Button(140, 490, 100, 50, 'help'), Button(260, 490, 100, 50, 'levels'),
+              Button(440, 55, 100, 30, 'log in'), Button(440, 15, 100, 30, 'sign up')]
 help_btns = [Button(10, 10, 60, 30, 'back')]
 levels_btns = [Button(10, 10, 60, 30, 'back'), Button(10, 120, 530, 50, '1'), Button(10, 190, 530, 50, '2'),
                Button(10, 260, 530, 50, '3'), Button(10, 330, 530, 50, '4'), Button(10, 400, 530, 50, '5')]
@@ -469,18 +575,24 @@ end_btns = [Button(10, 10, 60, 30, 'back'), Button(20, 450, 100, 50, 'prev'), Bu
             Button(260, 450, 100, 50, 'next')]
 quit_btn = Button(10, 560, 50, 30, 'quit')
 
+sign_up_btn = [Button(223, 250, 65, 30, 'done'), Button(10, 10, 60, 30, 'back')]
+sing_up_lines = [InputLine(160, 105, 210, 30, auto_text='Введите логин'),
+                 InputLine(160, 150, 210, 30, auto_text='Введите пароль')]
+
 screens = [Start('background.jpg', start_btns), Help('background.jpg', help_btns),
-           Levels('background.jpg', levels_btns), End('background.jpg', end_btns)]
+           Levels('background.jpg', levels_btns), End('background.jpg', end_btns),
+           SignUp('background.jpg', sign_up_btn, sing_up_lines)]
 cur_screen = screens[0]
 
 cur_level = 0
 level_maps = ['map1.txt', 'map2.txt', 'map3.txt', 'map4.txt', 'map5.txt']
 
+
 sound_on = True
 pygame.mixer.music.load('data/music.wav')
 pygame.mixer.music.play(-1)
 coin_music = pygame.mixer.Sound('data/coin_music.wav')
-Sound(420, 445)
+Sound(420, 485)
 while True:
     action = cur_screen.run()
     if action == 'help':
@@ -488,6 +600,10 @@ while True:
     elif action == 'levels':
         cur_screen = screens[2]
     elif action == 'back':
+        cur_screen = screens[0]
+    elif action == 'sign up':
+        cur_screen = screens[4]
+    elif action == 'done':
         cur_screen = screens[0]
     else:
         for group in (tiles, hero_group, obstacles, coins, enemies, portal):
