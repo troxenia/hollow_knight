@@ -12,7 +12,7 @@ class BdController:
     def make_user(self, login, password):
         if not login or not password:
             return False
-        if self.cur.execute("""SELECT nick FROM players WHERE nick = ?""", (login, )).fetchone():
+        if self.cur.execute("""SELECT nick FROM players WHERE nick = ?""", (login,)).fetchone():
             # self.cur.execute("""DELETE FROM players WHERE nick = ?""", (login, ))
             self.cur.execute("""UPDATE players 
 SET nick = ?,
@@ -22,10 +22,26 @@ SET nick = ?,
 WHERE nick = ?""", (login, password, login))
         else:
             self.cur.execute("""INSERT INTO players(nick,password) VALUES(?, ?)""", (login, password))
-        self.save_results()
-        return True
+        self.con.commit()
+        return login
 
-    def save_results(self):
+    def get_user(self, login, password):
+        if self.cur.execute("""SELECT nick FROM players WHERE nick = ?""", (login, )).fetchone():
+            return login
+        else:
+            return False
+
+    def get_score(self, nick):
+        return self.cur.execute("""SELECT score FROM players WHERE nick = ?""", (nick, )).fetchone()[0]
+
+    def get_levels(self, nick):
+        return self.cur.execute("""SELECT levels FROM players WHERE nick = ?""", (nick, )).fetchone()[0]
+
+    def save_results(self, score, levels, login):
+        self.cur.execute("""UPDATE players 
+SET score = ?,
+    levels = ?
+WHERE nick = ?""", (score, levels, login))
         self.con.commit()
 
     def close(self):

@@ -15,6 +15,9 @@ tile_images = {'empty': 'empty.png'}
 bd_cont = BdController('hollow_knight_bd.db')
 
 score = 0
+levels = list()
+nick = ''
+
 tiles = pygame.sprite.Group()
 hero_group = pygame.sprite.Group()
 obstacles = pygame.sprite.Group()
@@ -22,6 +25,7 @@ coins = pygame.sprite.Group()
 enemies = pygame.sprite.Group()
 portal = pygame.sprite.Group()
 sound_group = pygame.sprite.Group()
+score_group = pygame.sprite.Group()
 
 
 def load_image(name, color_key=None):
@@ -212,6 +216,20 @@ class Sound(pygame.sprite.Sprite):
                 self.image = self.image_on
                 pygame.mixer.music.play(-1)
             sound_on = not sound_on
+
+
+class Score(pygame.sprite.Sprite):
+    image = load_image('coin_icon.png')
+
+    def __init__(self, x, y):
+        super().__init__(score_group)
+        self.image = self.image
+        self.rect = self.image.get_rect().move(x, y)
+        self.font = pygame.font.Font(None, 40)
+
+    def draw(self, surface):
+        display_text([str(score)], self.rect.top - 5, self.font, x_coord=self.rect.right + 3)
+        surface.blit(self.image, self.rect)
 
 
 class AnimatedSprite(pygame.sprite.Sprite):
@@ -419,13 +437,14 @@ class Start(Menu):
 
 
 class SignUp(Menu):
-
+    """Окно регистрации."""
     def __init__(self, background, widgets: list, lines: list):
         super().__init__(background, widgets)
         self.lines = lines
         self.show_error = False
 
     def run(self):
+        global score, levels
         screen.blit(self.background, (0, 0))
         text = ['Authorize, please']
         font = pygame.font.SysFont('roboto', 30, True)
@@ -441,13 +460,68 @@ class SignUp(Menu):
                         action = widget.update(event)
                         if action is not None:
                             if action == 'done':
-                                if not bd_cont.make_user(self.lines[0].get_text(), self.lines[1].get_text()):
-                                    self.show_error = True
-                                else:
+                                nick = bd_cont.make_user(self.lines[0].get_text(), self.lines[1].get_text())
+                                if nick:
                                     self.show_error = False
                                     for line in self.lines:
                                         line.reload()
+                                    score = bd_cont.get_score(nick)
+                                    levels = [int(x) for x in bd_cont.get_levels(nick).split(',')]
+                                    print(score, levels)
                                     return action
+                                else:
+                                    self.show_error = True
+                            else:
+                                return action
+                for line in self.lines:
+                    line.update(event)
+            screen.blit(self.background, (0, 0))
+            display_text(text, text_coord, font, x_coord=160)
+            if self.show_error:
+                display_text(text2, 300, font, x_coord=140)
+            for widget in self.widgets:
+                widget.draw()
+            for line in self.lines:
+                line.draw()
+            pygame.display.flip()
+            clock.tick(FPS)
+
+
+class LogIn(Menu):
+    """Окно взождения в аккаунт."""
+    def __init__(self, background, widgets: list, lines: list):
+        super().__init__(background, widgets)
+        self.lines = lines
+        self.show_error = False
+
+    def run(self):
+        global score, levels, nick
+        screen.blit(self.background, (0, 0))
+        text = ['Log in, please']
+        font = pygame.font.SysFont('roboto', 30, True)
+        text_coord = 50
+        display_text(text, text_coord, font)
+        text2 = ['Такой учётной записи не существует, зарегестрируйтесь.']
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    close()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    for widget in self.widgets:
+                        action = widget.update(event)
+                        if action is not None:
+                            if action == 'done':
+                                nick = bd_cont.get_user(self.lines[0].get_text(), self.lines[1].get_text())
+                                if nick:
+                                    self.show_error = False
+                                    for line in self.lines:
+                                        line.reload()
+                                    score = bd_cont.get_score(nick)
+                                    levels = [int(x) for x in bd_cont.get_levels(nick).split(',')]
+                                    print(score, levels)
+                                    return action
+                                else:
+                                    self.show_error = True
                             else:
                                 return action
                 for line in self.lines:
@@ -493,7 +567,21 @@ class Levels(Menu):
         font = pygame.font.SysFont('roboto', 30, True)
         text_coord = 50
         display_text(text, text_coord, font)
-        return super().run()
+        while True:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    close()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    for widget in self.widgets:
+                        action = widget.update(event)
+                        if action is not None:
+                            return action
+            for widget in self.widgets:
+                widget.draw()
+            for spr in score_group.sprites():
+                spr.draw(screen)
+            pygame.display.flip()
+            clock.tick(FPS)
 
 
 class End(Menu):
@@ -502,12 +590,16 @@ class End(Menu):
         super().__init__(background, widgets)
 
     def run(self):
+        global score, levels
         screen.blit(self.background, (0, 0))
         if passed_level:
+            if not levels[cur_level]:
+                levels[cur_level] = 1
             title = ['Congratulations!']
             text = [f'You passed level {cur_level + 1}',
                     f'Coins captured: {coins_captured}/{coins_number}']
             score += coins_captured
+            bd_cont.save_results(score, ','.join(map(str, levels)), nick)
         else:
             title = ['Try harder!']
             text = [f'Level {cur_level + 1} not passed']
@@ -579,20 +671,24 @@ sign_up_btn = [Button(223, 250, 65, 30, 'done'), Button(10, 10, 60, 30, 'back')]
 sing_up_lines = [InputLine(160, 105, 210, 30, auto_text='Введите логин'),
                  InputLine(160, 150, 210, 30, auto_text='Введите пароль')]
 
+log_in_btn = [Button(223, 250, 65, 30, 'done'), Button(10, 10, 60, 30, 'back')]
+log_in_lines = [InputLine(160, 105, 210, 30, auto_text='Введите логин'),
+                InputLine(160, 150, 210, 30, auto_text='Введите пароль')]
+
 screens = [Start('background.jpg', start_btns), Help('background.jpg', help_btns),
            Levels('background.jpg', levels_btns), End('background.jpg', end_btns),
-           SignUp('background.jpg', sign_up_btn, sing_up_lines)]
+           SignUp('background.jpg', sign_up_btn, sing_up_lines), LogIn('background.jpg', log_in_btn, log_in_lines)]
 cur_screen = screens[0]
 
 cur_level = 0
 level_maps = ['map1.txt', 'map2.txt', 'map3.txt', 'map4.txt', 'map5.txt']
-
 
 sound_on = True
 pygame.mixer.music.load('data/music.wav')
 pygame.mixer.music.play(-1)
 coin_music = pygame.mixer.Sound('data/coin_music.wav')
 Sound(420, 485)
+Score(450, 15)
 while True:
     action = cur_screen.run()
     if action == 'help':
@@ -603,6 +699,8 @@ while True:
         cur_screen = screens[0]
     elif action == 'sign up':
         cur_screen = screens[4]
+    elif action == 'log in':
+        cur_screen = screens[5]
     elif action == 'done':
         cur_screen = screens[0]
     else:
