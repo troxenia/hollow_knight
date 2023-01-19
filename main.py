@@ -15,7 +15,7 @@ tile_images = {'empty': 'empty.png'}
 bd_cont = BdController('hollow_knight_bd.db')
 
 score = 0
-levels = list()
+levels = [0, 0, 0, 0, 0]
 nick = ''
 
 tiles = pygame.sprite.Group()
@@ -120,6 +120,20 @@ class Button:
     def update(self, event):
         if self.rect.collidepoint(event.pos):
             return self.action
+
+
+class LevelButton(Button):
+    def __init__(self, x, y, width, height, action, color=(248, 222, 173)):
+        super().__init__(x, y, width, height, action, color=color)
+        self.done_color = (34, 177, 76)
+        self.not_done_color = self.color
+
+    def draw(self):
+        if levels[int(self.action) - 1]:
+            self.color = self.done_color
+        else:
+            self.color = self.not_done_color
+        super().draw()
 
 
 class InputLine:
@@ -467,7 +481,6 @@ class SignUp(Menu):
                                         line.reload()
                                     score = bd_cont.get_score(nick)
                                     levels = [int(x) for x in bd_cont.get_levels(nick).split(',')]
-                                    print(score, levels)
                                     return action
                                 else:
                                     self.show_error = True
@@ -501,7 +514,7 @@ class LogIn(Menu):
         font = pygame.font.SysFont('roboto', 30, True)
         text_coord = 50
         display_text(text, text_coord, font)
-        text2 = ['Такой учётной записи не существует, зарегестрируйтесь.']
+        text2 = ['Такой учётной записи', 'не существует,', 'зарегестрируйтесь.']
         while True:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -518,7 +531,6 @@ class LogIn(Menu):
                                         line.reload()
                                     score = bd_cont.get_score(nick)
                                     levels = [int(x) for x in bd_cont.get_levels(nick).split(',')]
-                                    print(score, levels)
                                     return action
                                 else:
                                     self.show_error = True
@@ -661,8 +673,9 @@ def game():
 start_btns = [Button(20, 490, 100, 50, 'start'), Button(140, 490, 100, 50, 'help'), Button(260, 490, 100, 50, 'levels'),
               Button(440, 55, 100, 30, 'log in'), Button(440, 15, 100, 30, 'sign up')]
 help_btns = [Button(10, 10, 60, 30, 'back')]
-levels_btns = [Button(10, 10, 60, 30, 'back'), Button(10, 120, 530, 50, '1'), Button(10, 190, 530, 50, '2'),
-               Button(10, 260, 530, 50, '3'), Button(10, 330, 530, 50, '4'), Button(10, 400, 530, 50, '5')]
+levels_btns = [Button(10, 10, 60, 30, 'back'), LevelButton(10, 120, 530, 50, '1'),
+               LevelButton(10, 190, 530, 50, '2'), LevelButton(10, 260, 530, 50, '3'),
+               LevelButton(10, 330, 530, 50, '4'), LevelButton(10, 400, 530, 50, '5')]
 end_btns = [Button(10, 10, 60, 30, 'back'), Button(20, 450, 100, 50, 'prev'), Button(140, 450, 100, 50, 'replay'),
             Button(260, 450, 100, 50, 'next')]
 quit_btn = Button(10, 560, 50, 30, 'quit')
